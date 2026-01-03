@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "Получение всех постов",
+      "method": "GET",
+      "path": "/?action=posts",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "posts": []
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Создание нового поста",
+      "method": "POST",
+      "path": "/?action=create_post",
+      "body": {
+        "userId": 1,
+        "content": "Тестовый пост от товарища!"
+      },
+      "expectedStatus": 201,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

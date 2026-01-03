@@ -1,0 +1,33 @@
+{
+  "tests": [
+    {
+      "name": "Успешная авторизация пользователя Ярул",
+      "method": "POST",
+      "body": {
+        "username": "Ярул",
+        "password": "Ярул"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "user": {
+          "username": "Ярул"
+        }
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Неверный пароль",
+      "method": "POST",
+      "body": {
+        "username": "Ярул",
+        "password": "wrongpass"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

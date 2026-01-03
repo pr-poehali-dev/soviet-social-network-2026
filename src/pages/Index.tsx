@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,46 +25,190 @@ interface UserProfile {
   records: string[];
 }
 
+const API_URL = 'https://functions.poehali.dev/3562d4ac-7bb4-43b4-a019-d8eaaa7f34d4';
+const AUTH_URL = 'https://functions.poehali.dev/af500d4d-f6bc-4514-9a77-d19498d7d575';
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState('feed');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [newPostContent, setNewPostContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [commentsVisible, setCommentsVisible] = useState<{[key: number]: boolean}>({});
+  const [postComments, setPostComments] = useState<{[key: number]: any[]}>({});
+  const [newComment, setNewComment] = useState<{[key: number]: string}>({});
   
-  const profile: UserProfile = {
-    name: 'Иванов Владимир',
-    factory: 'ПАО "Северсталь"',
-    position: 'Мастер смены',
-    badges: ['Ударник труда', 'Победитель соревнования', 'Новатор'],
-    achievements: 12,
-    records: ['Перевыполнение плана на 150%', 'Лучший по профессии 2025']
+  const [profile, setProfile] = useState<UserProfile>({
+    name: '',
+    factory: '',
+    position: '',
+    badges: [],
+    achievements: 0,
+    records: []
+  });
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('sovietUser');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      loadPosts();
+      loadProfile(user.id);
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    
+    try {
+      const response = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setCurrentUser(data.user);
+        setIsLoggedIn(true);
+        localStorage.setItem('sovietUser', JSON.stringify(data.user));
+        loadPosts();
+        loadProfile(data.user.id);
+      } else {
+        setLoginError(data.error || 'Ошибка авторизации');
+      }
+    } catch (error) {
+      setLoginError('Ошибка соединения с сервером');
+    }
   };
 
-  const posts: Post[] = [
-    {
-      id: 1,
-      author: 'Петрова Анна',
-      factory: 'Камаз',
-      content: 'Наш цех перевыполнил квартальный план на 135%! Слава труду! 🏭',
-      likes: 234,
-      achievement: 'Ударник труда',
-      timestamp: '2 часа назад'
-    },
-    {
-      id: 2,
-      author: 'Сидоров Игорь',
-      factory: 'Уралмаш',
-      content: 'Новая линия по производству турбин запущена досрочно. Вперёд к новым высотам!',
-      likes: 189,
-      timestamp: '5 часов назад'
-    },
-    {
-      id: 3,
-      author: 'Козлова Мария',
-      factory: 'Норильский никель',
-      content: 'Завершили реконструкцию второго цеха. Производительность выросла на 40%! 💪',
-      likes: 312,
-      achievement: 'Новатор производства',
-      timestamp: '8 часов назад'
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+    localStorage.removeItem('sovietUser');
+    setLoginForm({ username: '', password: '' });
+  };
+
+  const loadPosts = async () => {
+    try {
+      const response = await fetch(`${API_URL}?action=posts`);
+      const data = await response.json();
+      setPosts(data.posts || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading posts:', error);
+      setLoading(false);
     }
-  ];
+  };
+
+  const loadProfile = async (userId: number) => {
+    try {
+      const response = await fetch(`${API_URL}?action=profile&userId=${userId}`);
+      const data = await response.json();
+      setProfile({
+        name: data.user.display_name,
+        factory: data.user.factory,
+        position: data.user.position,
+        badges: data.badges || [],
+        achievements: data.user.achievements_count,
+        records: data.records || []
+      });
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!newPostContent.trim()) return;
+    
+    try {
+      const response = await fetch(`${API_URL}?action=create_post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          content: newPostContent
+        })
+      });
+      
+      if (response.ok) {
+        setNewPostContent('');
+        loadPosts();
+      }
+    } catch (error) {
+      console.error('Error creating post:', error);
+    }
+  };
+
+  const handleToggleLike = async (postId: number) => {
+    try {
+      const response = await fetch(`${API_URL}?action=toggle_like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postId,
+          userId: currentUser.id
+        })
+      });
+      
+      if (response.ok) {
+        loadPosts();
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+    }
+  };
+
+  const loadComments = async (postId: number) => {
+    try {
+      const response = await fetch(`${API_URL}?action=comments&postId=${postId}`);
+      const data = await response.json();
+      setPostComments(prev => ({ ...prev, [postId]: data.comments || [] }));
+    } catch (error) {
+      console.error('Error loading comments:', error);
+    }
+  };
+
+  const handleToggleComments = (postId: number) => {
+    const isVisible = !commentsVisible[postId];
+    setCommentsVisible(prev => ({ ...prev, [postId]: isVisible }));
+    if (isVisible && !postComments[postId]) {
+      loadComments(postId);
+    }
+  };
+
+  const handleAddComment = async (postId: number) => {
+    const content = newComment[postId]?.trim();
+    if (!content) return;
+    
+    try {
+      const response = await fetch(`${API_URL}?action=add_comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postId,
+          userId: currentUser.id,
+          content
+        })
+      });
+      
+      if (response.ok) {
+        setNewComment(prev => ({ ...prev, [postId]: '' }));
+        loadComments(postId);
+        loadPosts();
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    }
+  };
 
   const factories = [
     { name: 'Северсталь', score: 9845, position: 1 },
@@ -72,6 +216,73 @@ const Index = () => {
     { name: 'Уралмаш', score: 9651, position: 3 },
     { name: 'Норильский никель', score: 9502, position: 4 }
   ];
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen star-pattern flex items-center justify-center">
+        <Card className="propaganda-card p-8 max-w-md w-full">
+          <div className="text-center mb-6">
+            <div className="w-20 h-20 soviet-badge rounded-full flex items-center justify-center text-4xl mx-auto mb-4">
+              ⭐
+            </div>
+            <h1 className="text-4xl font-bold mb-2 text-primary">ТОВАРИЩ.СУ</h1>
+            <p className="text-lg font-medium">Социальная сеть трудящихся СССР</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block font-bold mb-2">ЛОГИН ТОВАРИЩА</label>
+              <input
+                type="text"
+                value={loginForm.username}
+                onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+                className="w-full px-4 py-3 border-2 border-primary rounded-md font-medium"
+                placeholder="Введите логин"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block font-bold mb-2">ПАРОЛЬ</label>
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                className="w-full px-4 py-3 border-2 border-primary rounded-md font-medium"
+                placeholder="Введите пароль"
+                required
+              />
+            </div>
+            
+            {loginError && (
+              <div className="p-3 bg-destructive/10 border-2 border-destructive rounded-md">
+                <p className="text-destructive font-medium text-center">{loginError}</p>
+              </div>
+            )}
+            
+            <Button type="submit" className="w-full soviet-badge text-foreground font-bold py-3 text-lg">
+              ВОЙТИ В СОЦСЕТЬ
+            </Button>
+          </form>
+          
+          <div className="mt-6 p-4 bg-accent text-accent-foreground rounded-lg text-center">
+            <p className="text-sm font-medium">Вход только для членов трудовых коллективов</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen star-pattern flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-pulse">⭐</div>
+          <p className="text-xl font-bold">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen star-pattern">
@@ -88,14 +299,11 @@ const Index = () => {
                 <p className="text-sm opacity-90">Социальная сеть трудящихся СССР</p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" className="font-bold">
-                <Icon name="Bell" size={18} className="mr-1" />
-                Уведомления
-              </Button>
-              <Button variant="outline" size="sm" className="border-2 border-secondary font-bold">
-                <Icon name="User" size={18} className="mr-1" />
-                Профиль
+            <div className="flex gap-2 items-center">
+              <span className="font-bold mr-2">{currentUser?.display_name}</span>
+              <Button variant="outline" size="sm" className="border-2 border-secondary font-bold" onClick={handleLogout}>
+                <Icon name="LogOut" size={18} className="mr-1" />
+                Выход
               </Button>
             </div>
           </div>
@@ -124,16 +332,24 @@ const Index = () => {
             <Card className="propaganda-card p-6">
               <div className="flex items-center gap-4 mb-4">
                 <Avatar className="w-16 h-16 border-2 border-primary">
-                  <AvatarFallback className="bg-secondary text-secondary-foreground font-bold">ВИ</AvatarFallback>
+                  <AvatarFallback className="bg-secondary text-secondary-foreground font-bold text-2xl">
+                    {currentUser?.avatar_emoji}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <input 
-                    type="text" 
+                  <textarea
+                    value={newPostContent}
+                    onChange={(e) => setNewPostContent(e.target.value)}
                     placeholder="Поделись трудовым достижением, товарищ!" 
-                    className="w-full px-4 py-3 border-2 border-primary rounded-md font-medium"
+                    className="w-full px-4 py-3 border-2 border-primary rounded-md font-medium resize-none"
+                    rows={2}
                   />
                 </div>
-                <Button className="soviet-badge text-foreground font-bold px-6">
+                <Button 
+                  onClick={handleCreatePost}
+                  disabled={!newPostContent.trim()}
+                  className="soviet-badge text-foreground font-bold px-6"
+                >
                   Опубликовать
                 </Button>
               </div>
@@ -143,8 +359,8 @@ const Index = () => {
               <Card key={post.id} className="propaganda-card p-6 hover:shadow-lg transition-shadow">
                 <div className="flex items-start gap-4">
                   <Avatar className="w-14 h-14 border-2 border-primary">
-                    <AvatarFallback className="bg-accent text-accent-foreground font-bold">
-                      {post.author.split(' ').map(n => n[0]).join('')}
+                    <AvatarFallback className="bg-accent text-accent-foreground font-bold text-2xl">
+                      {(post as any).avatarEmoji || '⭐'}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -161,19 +377,60 @@ const Index = () => {
                     </p>
                     <p className="text-base mb-4 leading-relaxed">{post.content}</p>
                     <div className="flex items-center gap-4">
-                      <Button variant="outline" size="sm" className="font-medium border-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="font-medium border-2"
+                        onClick={() => handleToggleLike(post.id)}
+                      >
                         <Icon name="ThumbsUp" size={16} className="mr-2" />
                         {post.likes}
                       </Button>
-                      <Button variant="outline" size="sm" className="font-medium border-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="font-medium border-2"
+                        onClick={() => handleToggleComments(post.id)}
+                      >
                         <Icon name="MessageCircle" size={16} className="mr-2" />
-                        Комментарии
-                      </Button>
-                      <Button variant="outline" size="sm" className="font-medium border-2">
-                        <Icon name="Share2" size={16} className="mr-2" />
-                        Поделиться
+                        {(post as any).commentsCount || 0}
                       </Button>
                     </div>
+                    
+                    {commentsVisible[post.id] && (
+                      <div className="mt-4 space-y-3">
+                        <div className="border-t-2 border-primary pt-4">
+                          {postComments[post.id]?.map((comment: any) => (
+                            <div key={comment.id} className="flex gap-3 mb-3 p-3 bg-card rounded-lg">
+                              <div className="text-xl">{comment.avatarEmoji}</div>
+                              <div className="flex-1">
+                                <p className="font-bold text-sm">{comment.author}</p>
+                                <p className="text-sm">{comment.content}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{comment.timestamp}</p>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          <div className="flex gap-2 mt-3">
+                            <input
+                              type="text"
+                              value={newComment[post.id] || ''}
+                              onChange={(e) => setNewComment(prev => ({ ...prev, [post.id]: e.target.value }))}
+                              placeholder="Написать комментарий..."
+                              className="flex-1 px-3 py-2 border-2 border-primary rounded-md text-sm"
+                              onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
+                            />
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleAddComment(post.id)}
+                              className="soviet-badge text-foreground font-bold"
+                            >
+                              Отправить
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -186,8 +443,8 @@ const Index = () => {
               <Card className="propaganda-card p-6 md:col-span-1">
                 <div className="text-center mb-6">
                   <Avatar className="w-32 h-32 mx-auto mb-4 border-4 border-primary">
-                    <AvatarFallback className="bg-secondary text-secondary-foreground text-4xl font-bold">
-                      ВИ
+                    <AvatarFallback className="bg-secondary text-secondary-foreground text-5xl font-bold">
+                      {currentUser?.avatar_emoji}
                     </AvatarFallback>
                   </Avatar>
                   <h2 className="text-2xl font-bold mb-1">{profile.name}</h2>
